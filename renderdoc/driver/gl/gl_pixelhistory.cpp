@@ -48,6 +48,19 @@ struct CopyFramebuffer
   GLuint stencilViewId;
 };
 
+struct FramebufferKey
+{
+  GLenum depthFormat;
+  GLenum stencilFormat;
+  uint32_t numSamples;
+  bool operator<(const FramebufferKey& other) const {
+    return depthFormat < other.depthFormat ||
+           (depthFormat == other.depthFormat && stencilFormat < other.stencilFormat) ||
+           (depthFormat == other.depthFormat && stencilFormat == other.stencilFormat &&
+            numSamples < other.numSamples);
+  }
+};
+
 struct GLPixelHistoryResources
 {
   // Used for offscreen rendering for draw call events.
@@ -60,7 +73,7 @@ struct GLPixelHistoryResources
   GLuint msCopyDstBuffer;
   GLuint msCopyUniformBlockBuffer;
   std::unordered_map<GLuint, GLuint> programs;
-  std::map<std::tuple<GLenum, GLenum, uint32_t>, CopyFramebuffer> copyFramebuffers;
+  std::map<FramebufferKey, CopyFramebuffer> copyFramebuffers;
 };
 
 enum class OpenGLTest
@@ -105,7 +118,7 @@ GLuint GetPrimitiveIdProgram(WrappedOpenGL *driver, GLReplay *replay,
 // so that you can blit from the current bound framebuffer into the new framebuffer
 const CopyFramebuffer &getCopyFramebuffer(
     WrappedOpenGL *driver,
-    std::map<std::tuple<GLenum, GLenum, uint32_t>, CopyFramebuffer> &copyFramebuffers,
+    std::map<FramebufferKey, CopyFramebuffer> &copyFramebuffers,
     uint32_t numSamples, uint32_t numEvents, GLenum depthFormat, GLenum stencilFormat)
 {
   bool multisampled = numSamples > 1;
@@ -129,7 +142,7 @@ const CopyFramebuffer &getCopyFramebuffer(
   driver->glGetFramebufferAttachmentParameteriv(eGL_DRAW_FRAMEBUFFER, eGL_STENCIL_ATTACHMENT,
                                                 eGL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE, &stencilType);
 
-  auto it = copyFramebuffers.find(std::make_tuple(depthFormat, stencilFormat, numSamples));
+  auto it = copyFramebuffers.find(FramebufferKey{depthFormat, stencilFormat, numSamples});
   if(it != copyFramebuffers.end())
   {
     return it->second;
@@ -194,13 +207,14 @@ const CopyFramebuffer &getCopyFramebuffer(
   driver->glBindFramebuffer(eGL_DRAW_FRAMEBUFFER, savedDrawFramebuffer);
   driver->glBindFramebuffer(eGL_READ_FRAMEBUFFER, savedReadFramebuffer);
 
-  copyFramebuffers[std::make_tuple(depthFormat, stencilFormat, numSamples)] = copyFramebuffer;
-  return copyFramebuffers[std::make_tuple(depthFormat, stencilFormat, numSamples)];
+  FramebufferKey key{depthFormat, stencilFormat, numSamples};
+  copyFramebuffers[key] = copyFramebuffer;
+  return copyFramebuffers[key];
 }
 
 const CopyFramebuffer &getCopyFramebuffer(
     WrappedOpenGL *driver,
-    std::map<std::tuple<GLenum, GLenum, uint32_t>, CopyFramebuffer> &copyFramebuffers,
+    std::map<FramebufferKey, CopyFramebuffer> &copyFramebuffers,
     uint32_t numSamples, uint32_t numEvents)
 {
   GLuint curDepth;
@@ -259,9 +273,19 @@ const CopyFramebuffer &getCopyFramebuffer(
 
 GLbitfield getFramebufferCopyMask(WrappedOpenGL *driver)
 {
-  GLuint curDepth;
-  GLuint curStencil;
+  GLuint curDepth = 0;
+  GLuint curStencil = 0;
+  GLuint curColor = 0;
 
+  GLint colorAttachment;
+  driver->glGetIntegerv(eGL_READ_BUFFER, &colorAttachment);
+
+  if(colorAttachment)
+  {
+    driver->glGetFramebufferAttachmentParameteriv(eGL_READ_FRAMEBUFFER, RDCGLenum(colorAttachment),
+                                                  eGL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME,
+                                                  (GLint *)&curColor);
+  }
   driver->glGetFramebufferAttachmentParameteriv(eGL_DRAW_FRAMEBUFFER, eGL_DEPTH_ATTACHMENT,
                                                 eGL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME,
                                                 (GLint *)&curDepth);
@@ -270,7 +294,12 @@ GLbitfield getFramebufferCopyMask(WrappedOpenGL *driver)
                                                 eGL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME,
                                                 (GLint *)&curStencil);
 
-  GLbitfield mask = eGL_COLOR_BUFFER_BIT;
+
+  GLbitfield mask = 0;
+  if(curColor)
+  {
+    mask |= eGL_COLOR_BUFFER_BIT;
+  }
   if(curDepth)
   {
     mask |= eGL_DEPTH_BUFFER_BIT;
@@ -317,11 +346,11 @@ bool PixelHistorySetupResources(WrappedOpenGL *driver, GLPixelHistoryResources &
   driver->glNamedBufferDataEXT(
       resources.msCopyDstBuffer,
       8 * (sizeof(float)) * numEvents,    // 8 floats per event (r,g,b,a,depth,null,null,null)
-      nullptr, eGL_DYNAMIC_READ);
+      NULL, eGL_DYNAMIC_READ);
 
   driver->glGenBuffers(1, &resources.msCopyUniformBlockBuffer);
   driver->glBindBuffer(eGL_UNIFORM_BUFFER, resources.msCopyUniformBlockBuffer);
-  driver->glNamedBufferDataEXT(resources.msCopyUniformBlockBuffer, 4 * sizeof(uint32_t), nullptr,
+  driver->glNamedBufferDataEXT(resources.msCopyUniformBlockBuffer, 4 * sizeof(uint32_t), NULL,
                                eGL_DYNAMIC_DRAW);
 
   // If the GLSL version is greater than or equal to 330, we can use IntBitsToFloat, otherwise we
