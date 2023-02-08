@@ -1099,7 +1099,7 @@ void QueryPostModPerFragment(WrappedOpenGL *driver, GLReplay *replay,
 
       driver->ReplayLog(modEvents[i].eventId, modEvents[i].eventId, eReplay_OnlyDraw);
 
-      if(numSamples == 1)
+      if(numSamples > 1)
       {
         copyFramebuffer = getCopyFramebuffer(driver, resources.copyFramebuffers, numSamples,
                                              int(modEvents.size()));
