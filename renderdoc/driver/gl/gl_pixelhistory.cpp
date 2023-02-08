@@ -606,7 +606,7 @@ void QueryPostModPixelValues(WrappedOpenGL *driver, GLPixelHistoryResources &res
     driver->glGetIntegerv(eGL_DRAW_FRAMEBUFFER_BINDING, &savedDrawFramebuffer);
     driver->glGetIntegerv(eGL_READ_FRAMEBUFFER_BINDING, &savedReadFramebuffer);
 
-    if(sampleIndex != ~0u)
+    if(numSamples > 1)
     {
       copyFramebuffer =
           getCopyFramebuffer(driver, resources.copyFramebuffers, numSamples, int(modEvents.size()));
@@ -758,43 +758,20 @@ std::map<uint32_t, uint32_t> QueryNumFragmentsByEvent(WrappedOpenGL *driver,
 
     // enable the sample we're looking at so we get the shaderOut even if it's masked off
     driver->glEnable(eGL_SAMPLE_MASK);
-    if(sampleIndex != ~0u)
-    {
-      driver->glSampleMaski(0, 1u << sampleIndex);
-    }
-    else
-    {
-      driver->glSampleMaski(0, ~0u);
-    }
+
+    driver->glSampleMaski(0, 1u << sampleIndex);
 
     // replay event
     driver->ReplayLog(modEvents[i].eventId, modEvents[i].eventId, eReplay_OnlyDraw);
 
     uint32_t numFragments = 0;
-    if(sampleIndex == ~0u)
+    if(numSamples == 1)
     {
       ModificationValue modValue;
-      // if multisampled, then we need to blit to a nonMS texture to read the pixels
-      if(numSamples > 1)
-      {
-        const CopyFramebuffer &copyFramebuffer =
-            getCopyFramebuffer(driver, resources.copyFramebuffers, 1, int(modEvents.size()),
-                               eGL_DEPTH24_STENCIL8, eGL_DEPTH24_STENCIL8);
-        driver->glBindFramebuffer(eGL_DRAW_FRAMEBUFFER, copyFramebuffer.framebufferId);
-        driver->glBindFramebuffer(eGL_READ_FRAMEBUFFER, resources.fullPrecisionFrameBuffer);
-        SafeBlitFramebuffer(x, y, x + 1, y + 1, 0, 0, 1, 1, getFramebufferCopyMask(driver),
-                            eGL_NEAREST);
-        driver->glBindFramebuffer(eGL_READ_FRAMEBUFFER, copyFramebuffer.framebufferId);
-        driver->glReadPixels(0, 0, 1, 1, eGL_RGBA, eGL_FLOAT, (void *)modValue.col.floatValue.data());
-        driver->glReadPixels(0, 0, 1, 1, eGL_DEPTH_COMPONENT, eGL_FLOAT, (void *)&modValue.depth);
-        driver->glReadPixels(0, 0, 1, 1, eGL_STENCIL_INDEX, eGL_UNSIGNED_INT, (void *)&numFragments);
-      }
-      else
-      {
-        driver->glReadPixels(x, y, 1, 1, eGL_RGBA, eGL_FLOAT, (void *)modValue.col.floatValue.data());
-        driver->glReadPixels(x, y, 1, 1, eGL_DEPTH_COMPONENT, eGL_FLOAT, (void *)&modValue.depth);
-        driver->glReadPixels(x, y, 1, 1, eGL_STENCIL_INDEX, eGL_UNSIGNED_INT, (void *)&numFragments);
-      }
+      driver->glReadPixels(x, y, 1, 1, eGL_RGBA, eGL_FLOAT, (void *)modValue.col.floatValue.data());
+      driver->glReadPixels(x, y, 1, 1, eGL_DEPTH_COMPONENT, eGL_FLOAT, (void *)&modValue.depth);
+      driver->glReadPixels(x, y, 1, 1, eGL_STENCIL_INDEX, eGL_UNSIGNED_INT, (void *)&numFragments);
+      
 
       // We're not reading the stencil value here, so use the postMod instead.
       // Shaders don't actually output stencil values, those are determined by the stencil op.
@@ -1026,24 +1003,9 @@ void QueryShaderOutPerFragment(WrappedOpenGL *driver, GLReplay *replay,
 
       driver->ReplayLog(modEvents[i].eventId, modEvents[i].eventId, eReplay_OnlyDraw);
 
-      if(sampleIndex == ~0u)
+      if(numSamples == 1)
       {
         ModificationValue modValue;
-        // if multisampled, then we need to blit to a nonMS texture to read the pixels
-        if(numSamples > 1)
-        {
-          const CopyFramebuffer &copyFramebuffer =
-              getCopyFramebuffer(driver, resources.copyFramebuffers, 1, int(modEvents.size()),
-                                 eGL_DEPTH24_STENCIL8, eGL_DEPTH24_STENCIL8);
-          driver->glBindFramebuffer(eGL_DRAW_FRAMEBUFFER, copyFramebuffer.framebufferId);
-          driver->glBindFramebuffer(eGL_READ_FRAMEBUFFER, resources.fullPrecisionFrameBuffer);
-          SafeBlitFramebuffer(x, y, x + 1, y + 1, 0, 0, 1, 1, getFramebufferCopyMask(driver),
-                              eGL_NEAREST);
-          driver->glBindFramebuffer(eGL_READ_FRAMEBUFFER, copyFramebuffer.framebufferId);
-          driver->glReadPixels(0, 0, 1, 1, eGL_RGBA, eGL_FLOAT,
-                               (void *)modValue.col.floatValue.data());
-          driver->glReadPixels(0, 0, 1, 1, eGL_DEPTH_COMPONENT, eGL_FLOAT, (void *)&modValue.depth);
-        }
         driver->glReadPixels(x, y, 1, 1, eGL_RGBA, eGL_FLOAT, (void *)modValue.col.floatValue.data());
         driver->glReadPixels(x, y, 1, 1, eGL_DEPTH_COMPONENT, eGL_FLOAT, (void *)&modValue.depth);
         modValue.stencil = historyIndex->shaderOut.stencil;
@@ -1137,7 +1099,7 @@ void QueryPostModPerFragment(WrappedOpenGL *driver, GLReplay *replay,
 
       driver->ReplayLog(modEvents[i].eventId, modEvents[i].eventId, eReplay_OnlyDraw);
 
-      if(sampleIndex != ~0U)
+      if(numSamples == 1)
       {
         copyFramebuffer = getCopyFramebuffer(driver, resources.copyFramebuffers, numSamples,
                                              int(modEvents.size()));
@@ -1178,7 +1140,7 @@ void QueryPostModPerFragment(WrappedOpenGL *driver, GLReplay *replay,
       driver->glBindFramebuffer(eGL_READ_FRAMEBUFFER, savedReadFramebuffer);
     }
 
-    if(sampleIndex != ~0u)
+    if(numSamples > 1)
     {
       if(copyFramebuffer.framebufferId != 0u)
       {
@@ -1310,7 +1272,7 @@ void QueryPrimitiveIdPerFragment(WrappedOpenGL *driver, GLReplay *replay,
         driver->glBindFramebuffer(eGL_READ_FRAMEBUFFER, resources.fullPrecisionFrameBuffer);
         SafeBlitFramebuffer(x, y, x + 1, y + 1, 0, 0, 1, 1, getFramebufferCopyMask(driver),
                             eGL_NEAREST);
-        CopyMSSample(driver, resources, copyFramebuffer, sampleIndex == ~0u ? 0 : sampleIndex, 0, 0,
+        CopyMSSample(driver, resources, copyFramebuffer, sampleIndex, 0, 0,
                      1, primitiveIds);
       }
       RDCASSERT(primitiveIds[0] == primitiveIds[1] && primitiveIds[0] == primitiveIds[2] &&
@@ -1436,7 +1398,7 @@ rdcarray<PixelModification> GLReplay::PixelHistory(rdcarray<EventUsage> events, 
 
   if(sampleIdx > textureDesc.msSamp)
   {
-    sampleIdx = ~0u;
+    sampleIdx = 0; // if the sample index is out of range (ie. average value) then default to 0
   }
 
   uint32_t sampleMask = ~0U;
