@@ -35,7 +35,11 @@ layout(binding = 2, std140) writeonly buffer pixelhistorydest
 }
 dest;
 
+#ifdef VULKAN
 layout(push_constant) uniform multisamplePush
+#else
+layout(std140, binding = 3) uniform multisamplePush
+#endif
 {
   int currentSample;
   int x;
