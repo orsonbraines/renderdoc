@@ -351,7 +351,7 @@ bool PixelHistorySetupResources(WrappedOpenGL *driver, GLPixelHistoryResources &
 
   driver->glGenBuffers(1, &resources.msCopyUniformBlockBuffer);
   driver->glBindBuffer(eGL_UNIFORM_BUFFER, resources.msCopyUniformBlockBuffer);
-  driver->glNamedBufferDataEXT(resources.msCopyUniformBlockBuffer, 4 * sizeof(uint32_t), NULL,
+  driver->glNamedBufferDataEXT(resources.msCopyUniformBlockBuffer, 8 * sizeof(uint32_t), NULL,
                                eGL_DYNAMIC_DRAW);
 
   // If the GLSL version is greater than or equal to 330, we can use IntBitsToFloat, otherwise we
@@ -438,7 +438,7 @@ void CopyMSSample(WrappedOpenGL *driver, const GLPixelHistoryResources &resource
 
   uint32_t uniforms[4] = {uint32_t(sampleIdx), uint32_t(x), uint32_t(y), 0};    // { sampleIdx, x, y, dstOffset }
   driver->glBindBuffer(eGL_UNIFORM_BUFFER, resources.msCopyUniformBlockBuffer);
-  driver->glNamedBufferSubDataEXT(resources.msCopyUniformBlockBuffer, 0, 4 * sizeof(uint32_t),
+  driver->glNamedBufferSubDataEXT(resources.msCopyUniformBlockBuffer, 0, sizeof(uniforms),
                                   uniforms);
 
   driver->glBindBufferBase(eGL_UNIFORM_BUFFER, 3, resources.msCopyUniformBlockBuffer);
@@ -447,50 +447,64 @@ void CopyMSSample(WrappedOpenGL *driver, const GLPixelHistoryResources &resource
   GLint savedMSTexture0;
   driver->glGetIntegerv(eGL_TEXTURE_BINDING_2D_MULTISAMPLE, &savedMSTexture0);
   driver->glBindTexture(eGL_TEXTURE_2D_MULTISAMPLE, copyFramebuffer.colorTextureId);
-  // GLint savedMSTexture1;
-  // GLint savedMSTexture2;
-
-  // if(copyFramebuffer.dsTextureId)
-  // {
-  //   driver->glActiveTexture(eGL_TEXTURE1);
-  //   driver->glGetIntegerv(eGL_TEXTURE_BINDING_2D_MULTISAMPLE, &savedMSTexture1);
-  //   driver->glBindTexture(eGL_TEXTURE_2D_MULTISAMPLE, copyFramebuffer.dsTextureId);
-  //   driver->glTexParameteri(eGL_TEXTURE_2D_MULTISAMPLE, eGL_DEPTH_STENCIL_TEXTURE_MODE,
-  //                           eGL_DEPTH_COMPONENT);
-
-  //   driver->glActiveTexture(eGL_TEXTURE2);
-  //   driver->glGetIntegerv(eGL_TEXTURE_BINDING_2D_MULTISAMPLE, &savedMSTexture2);
-  //   driver->glBindTexture(eGL_TEXTURE_2D_MULTISAMPLE, copyFramebuffer.stencilViewId);
-  //   driver->glTexParameteri(eGL_TEXTURE_2D_MULTISAMPLE, eGL_DEPTH_STENCIL_TEXTURE_MODE,
-  //                           eGL_STENCIL_INDEX);
-  // }
-  // else
-  // {
-  //   driver->glActiveTexture(eGL_TEXTURE1);
-  //   driver->glGetIntegerv(eGL_TEXTURE_BINDING_2D_MULTISAMPLE, &savedMSTexture1);
-  //   driver->glBindTexture(eGL_TEXTURE_2D_MULTISAMPLE, copyFramebuffer.depthTextureId);
-
-  //   driver->glActiveTexture(eGL_TEXTURE2);
-  //   driver->glGetIntegerv(eGL_TEXTURE_BINDING_2D_MULTISAMPLE, &savedMSTexture2);
-  //   driver->glBindTexture(eGL_TEXTURE_2D_MULTISAMPLE, copyFramebuffer.stencilTextureId);
-  // }
+ 
 
   driver->glBindBuffer(eGL_SHADER_STORAGE_BUFFER, resources.msCopyDstBuffer);
   driver->glBindBufferBase(eGL_SHADER_STORAGE_BUFFER, 2, resources.msCopyDstBuffer);
 
   driver->glMemoryBarrier(GL_FRAMEBUFFER_BARRIER_BIT);
   driver->glDispatchCompute(1, 1, 1);
-  driver->glMemoryBarrier(eGL_SHADER_STORAGE_BARRIER_BIT);
 
-  driver->glGetBufferSubData(eGL_SHADER_STORAGE_BUFFER, 0, 32, pixelDst);
+  driver->glUseProgram(resources.msCopyDepthComputeProgram);
+  GLint depthMSLoc = driver->glGetUniformLocation(resources.msCopyDepthComputeProgram, "depthMS"); 
+  GLint stencilMSLoc = driver->glGetUniformLocation(resources.msCopyDepthComputeProgram, "stencilMS");
+
+  driver->glUniform1i(depthMSLoc, 0);
+  driver->glUniform1i(stencilMSLoc, 1);
+
+  uint32_t newUniforms[6] = {uint32_t(sampleIdx), uint32_t(x), uint32_t(y), 1,
+      /* copyFramebuffer.dsTextureId != 0 ||
+                              copyFramebuffer.depthTextureId != 0 */ 1,
+                             /* copyFramebuffer.dsTextureId != 0 ||
+                              copyFramebuffer.stencilTextureId !=
+                                  0 */ 1};    // { sampleIdx, x, y, dstOffset, hasDepth, hasStencil }
+  driver->glNamedBufferSubDataEXT(resources.msCopyUniformBlockBuffer, 0, sizeof(newUniforms), newUniforms);
+
+  driver->glActiveTexture(eGL_TEXTURE1);
+  GLint savedMSTexture1;
+  driver->glGetIntegerv(eGL_TEXTURE_BINDING_2D_MULTISAMPLE, &savedMSTexture1);
+
+   if(copyFramebuffer.dsTextureId)
+   {
+     driver->glActiveTexture(eGL_TEXTURE0);
+     driver->glBindTexture(eGL_TEXTURE_2D_MULTISAMPLE, copyFramebuffer.dsTextureId);
+     driver->glTexParameteri(eGL_TEXTURE_2D_MULTISAMPLE, eGL_DEPTH_STENCIL_TEXTURE_MODE,
+                             eGL_DEPTH_COMPONENT);
+
+     driver->glActiveTexture(eGL_TEXTURE1);
+     driver->glBindTexture(eGL_TEXTURE_2D_MULTISAMPLE, copyFramebuffer.stencilViewId);
+     driver->glTexParameteri(eGL_TEXTURE_2D_MULTISAMPLE, eGL_DEPTH_STENCIL_TEXTURE_MODE,
+                             eGL_STENCIL_INDEX);
+   }
+   else
+   {
+     driver->glActiveTexture(eGL_TEXTURE0);
+     driver->glBindTexture(eGL_TEXTURE_2D_MULTISAMPLE, copyFramebuffer.depthTextureId);
+
+     driver->glActiveTexture(eGL_TEXTURE1);
+     driver->glBindTexture(eGL_TEXTURE_2D_MULTISAMPLE, copyFramebuffer.stencilTextureId);
+   }
+
+   driver->glDispatchCompute(1, 1, 1);
+   driver->glMemoryBarrier(eGL_SHADER_STORAGE_BARRIER_BIT);
+
+   driver->glGetBufferSubData(eGL_SHADER_STORAGE_BUFFER, 0, 8 * 4, pixelDst);
 
   driver->glUseProgram(savedProgram);
   driver->glActiveTexture(eGL_TEXTURE0);
   driver->glBindTexture(eGL_TEXTURE_2D_MULTISAMPLE, savedMSTexture0);
-  // driver->glActiveTexture(eGL_TEXTURE1);
-  // driver->glBindTexture(eGL_TEXTURE_2D_MULTISAMPLE, msCopyDstBuffer);
-  // driver->glActiveTexture(eGL_TEXTURE2);
-  // driver->glBindTexture(eGL_TEXTURE_2D_MULTISAMPLE, savedMSTexture2);
+  driver->glActiveTexture(eGL_TEXTURE1);
+  driver->glBindTexture(eGL_TEXTURE_2D_MULTISAMPLE, savedMSTexture1);
   driver->glActiveTexture((RDCGLenum)savedActiveTexture);
   driver->glBindBuffer(eGL_SHADER_STORAGE_BUFFER, savedShaderStorageBuffer);
   driver->glBindBuffer(eGL_UNIFORM_BUFFER, savedShaderStorageBuffer);
@@ -583,7 +597,7 @@ void readPixelValuesMS(WrappedOpenGL *driver, const GLPixelHistoryResources &res
   modValue.depth = pixelValue[depthOffset];
   if(readStencil)
   {
-    modValue.stencil = int(pixelValue[stencilOffset]);
+    modValue.stencil = *(int*)&pixelValue[stencilOffset];
   }
   
 }
@@ -615,7 +629,7 @@ void QueryPostModPixelValues(WrappedOpenGL *driver, GLPixelHistoryResources &res
 
       SafeBlitFramebuffer(x, y, x + 1, y + 1, 0, 0, 1, 1,
                           getFramebufferCopyMask(driver), eGL_NEAREST);      
-      readPixelValuesMS(driver, resources, copyFramebuffer, sampleIndex, 0, 0, history, i, true);
+      readPixelValuesMS(driver, resources, copyFramebuffer, sampleIndex, 0, 0, history, int(i), true);
 
     }
     else
@@ -695,7 +709,7 @@ void readShaderOutMS(WrappedOpenGL *driver, const GLPixelHistoryResources &resou
     modValue.col.floatValue[j] = pixelValue[j];
   }
   modValue.depth = pixelValue[depthOffset];
-  modValue.stencil = int(pixelValue[stencilOffset]);
+  modValue.stencil = *(int*)&pixelValue[stencilOffset];
   history[historyIndex].shaderOut = modValue;
 }
 
@@ -1086,7 +1100,7 @@ void QueryPostModPerFragment(WrappedOpenGL *driver, GLReplay *replay,
         SafeBlitFramebuffer(x, y, x + 1, y + 1, 0, 0, 1, 1,
                             getFramebufferCopyMask(driver), eGL_NEAREST);        
                             
-        readPixelValuesMS(driver, resources, copyFramebuffer, sampleIndex, 0, 0, history, historyIndex-history.begin(), false);
+        readPixelValuesMS(driver, resources, copyFramebuffer, sampleIndex, 0, 0, history, int(historyIndex-history.begin()), false);
         historyIndex++;
       }
       else
