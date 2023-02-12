@@ -512,10 +512,11 @@ void CopyMSSample(WrappedOpenGL *driver, const GLPixelHistoryResources &resource
 
 rdcarray<EventUsage> QueryModifyingEvents(WrappedOpenGL *driver, GLPixelHistoryResources &resources,
                                           const rdcarray<EventUsage> &events, int x, int y,
-                                          rdcarray<PixelModification> &history)
+                                          int mipLevel, rdcarray<PixelModification> &history)
 {
   rdcarray<EventUsage> modEvents;
   rdcarray<GLuint> occlusionQueries;
+  std::set<uint32_t> ignoredEvents;
   occlusionQueries.resize(events.size());
   driver->glGenQueries((GLsizei)occlusionQueries.size(), occlusionQueries.data());
 
@@ -523,7 +524,26 @@ rdcarray<EventUsage> QueryModifyingEvents(WrappedOpenGL *driver, GLPixelHistoryR
   // execute the occlusion queries
   for(size_t i = 0; i < events.size(); i++)
   {
-    if(!(events[i].usage == ResourceUsage::Clear || isDirectWrite(events[i].usage)))
+    bool ignored = false;
+    int objectType;
+    driver->glGetFramebufferAttachmentParameteriv(eGL_DRAW_FRAMEBUFFER, eGL_COLOR_ATTACHMENT0,
+                                                  eGL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE,
+                                                  &objectType);
+    // Ignore the event if the framebuffer is attached to a different mip level than the one we're
+    // interested in
+    if(objectType == eGL_TEXTURE)
+    {
+      int attachedMipLevel;
+      driver->glGetFramebufferAttachmentParameteriv(eGL_DRAW_FRAMEBUFFER, eGL_COLOR_ATTACHMENT0,
+                                                    eGL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL,
+                                                    &attachedMipLevel);
+      if(mipLevel != attachedMipLevel)
+      {
+        ignoredEvents.insert(events[i].eventId);
+        ignored = true;
+      }
+    }
+    if(!ignored && !(events[i].usage == ResourceUsage::Clear || isDirectWrite(events[i].usage)))
     {
       driver->glDisable(eGL_DEPTH_TEST);
       driver->glDisable(eGL_STENCIL_TEST);
@@ -548,6 +568,10 @@ rdcarray<EventUsage> QueryModifyingEvents(WrappedOpenGL *driver, GLPixelHistoryR
   // read back the occlusion queries and generate the list of potentially modifying events
   for(size_t i = 0; i < events.size(); i++)
   {
+    if(ignoredEvents.count(events[i].eventId) == 1)
+    {
+      continue;
+    }
     if(events[i].usage == ResourceUsage::Clear || isDirectWrite(events[i].usage))
     {
       PixelModification mod;
@@ -1382,7 +1406,7 @@ rdcarray<PixelModification> GLReplay::PixelHistory(rdcarray<EventUsage> events, 
                              glslVersion, textureDesc.msSamp);
 
   rdcarray<EventUsage> modEvents =
-      QueryModifyingEvents(m_pDriver, resources, events, x, flippedY, history);
+      QueryModifyingEvents(m_pDriver, resources, events, x, flippedY, sub.mip, history);
 
   if(modEvents.empty())
   {
