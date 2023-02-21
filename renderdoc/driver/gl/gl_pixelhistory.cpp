@@ -705,7 +705,7 @@ void QueryPostModPixelValues(WrappedOpenGL *driver, GLPixelHistoryResources &res
         if(lastFramebufferId != ~0u)
         {
           RDCDEBUG("[OBJT] lastHistoryIdx=%d, i-lastHistoryIdx=%d", lastHistoryIdx, i-lastHistoryIdx);
-          readPixelValues(driver, resources, copyFramebuffer, history, lastHistoryIdx, true, i-lastHistoryIdx);
+          readPixelValues(driver, resources, copyFramebuffer, history, lastHistoryIdx, true, (uint32_t)(i-lastHistoryIdx));
         }
         lastFramebufferId = copyFramebuffer.framebufferId;
         lastHistoryIdx = int(i);
@@ -1080,7 +1080,7 @@ void QueryPostModPerFragment(WrappedOpenGL *driver, GLReplay *replay,
                              const std::map<uint32_t, uint32_t> &eventFragments,
                              uint32_t numSamples, uint32_t sampleIndex)
 {
-  driver->ReplayLog(0, modEvents[0].eventId - 1, eReplay_WithoutDraw);
+  driver->ReplayLog(0, modEvents[0].eventId, eReplay_WithoutDraw);
 
   for(size_t i = 0; i < modEvents.size(); i++)
   {
@@ -1156,7 +1156,7 @@ void QueryPostModPerFragment(WrappedOpenGL *driver, GLReplay *replay,
         {
           if(lastFramebufferId != ~0u)
           {
-            readPixelValues(driver, resources, copyFramebuffer, history, lastHistoryIdx, false, j-lastHistoryIdx);
+            readPixelValues(driver, resources, copyFramebuffer, history, lastHistoryIdx, false, (uint32_t)(j-lastHistoryIdx));
           }
           lastFramebufferId = copyFramebuffer.framebufferId;
           lastHistoryIdx = int(j);
@@ -1196,7 +1196,7 @@ void QueryPrimitiveIdPerFragment(WrappedOpenGL *driver, GLReplay *replay,
                                  bool usingFloatForPrimitiveId, uint32_t numSamples,
                                  uint32_t sampleIndex)
 {
-  driver->ReplayLog(0, modEvents[0].eventId - 1, eReplay_WithoutDraw);
+  driver->ReplayLog(0, modEvents[0].eventId, eReplay_WithoutDraw);
 
   for(size_t i = 0; i < modEvents.size(); i++)
   {
@@ -1243,7 +1243,7 @@ void QueryPrimitiveIdPerFragment(WrappedOpenGL *driver, GLReplay *replay,
 
     // we expect this value to be overwritten by the primitive id shader. if not
     // it will cause an assertion that all color values are the same to fail
-    driver->glClearColor(0.84f, 0.17f, 0.2f, 0.49f);
+    driver->glClearColor(0.0f, 0.17f, 0.2f, 0.49f);
     driver->glClear(eGL_COLOR_BUFFER_BIT);
 
     driver->glGetIntegerv(eGL_CURRENT_PROGRAM, &currentProgram);
@@ -1261,6 +1261,7 @@ void QueryPrimitiveIdPerFragment(WrappedOpenGL *driver, GLReplay *replay,
 
       driver->ReplayLog(modEvents[i].eventId, modEvents[i].eventId, eReplay_OnlyDraw);
 
+      // Primitive id array is given size 8 for the multisampled case
       float primitiveIds[8];
       if(numSamples == 1)
       {
