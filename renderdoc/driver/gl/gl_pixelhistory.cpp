@@ -1136,10 +1136,6 @@ void QueryPostModPerFragment(WrappedOpenGL *driver, GLReplay *replay,
 
       driver->ReplayLog(modEvents[i].eventId, modEvents[i].eventId, eReplay_OnlyDraw);
 
-      float debugCVs[4];
-      driver->glReadPixels(x, y, 1, 1, eGL_RGBA, eGL_FLOAT, debugCVs);
-      RDCDEBUG("[OBJT] debugCVs %f %f %f %f", debugCVs[0], debugCVs[1], debugCVs[2], debugCVs[3]);
-
       if(numSamples > 1)
       {
         copyFramebuffer = getCopyFramebuffer(driver, resources.copyFramebuffers, numSamples,
