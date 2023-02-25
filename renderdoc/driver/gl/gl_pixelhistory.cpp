@@ -46,6 +46,7 @@ struct CopyFramebuffer
   GLuint depthTextureId;
   GLuint stencilTextureId;
   GLuint stencilViewId;
+  uint32_t width;
 };
 
 struct FramebufferKey
@@ -156,6 +157,7 @@ const CopyFramebuffer &getCopyFramebuffer(WrappedOpenGL *driver,
 
   CopyFramebuffer copyFramebuffer;
   RDCEraseEl(copyFramebuffer);
+  copyFramebuffer.width = numEvents;
   // Allocate a framebuffer that will render to the textures
   driver->glGenFramebuffers(1, &copyFramebuffer.framebufferId);
   driver->glBindFramebuffer(eGL_FRAMEBUFFER, copyFramebuffer.framebufferId);
@@ -164,7 +166,7 @@ const CopyFramebuffer &getCopyFramebuffer(WrappedOpenGL *driver,
   GLenum textureTarget = multisampled ? eGL_TEXTURE_2D_MULTISAMPLE : eGL_TEXTURE_2D;
   driver->glGenTextures(1, &copyFramebuffer.colorTextureId);
   driver->CreateTextureImage(copyFramebuffer.colorTextureId, eGL_RGBA32F, eGL_NONE, eGL_NONE,
-                             textureTarget, 2, numEvents, 1, 1, numSamples, 1);
+                             textureTarget, 2, copyFramebuffer.width, 1, 1, numSamples, 1);
   driver->glFramebufferTexture(eGL_FRAMEBUFFER, eGL_COLOR_ATTACHMENT0,
                                copyFramebuffer.colorTextureId, 0);
 
@@ -174,7 +176,7 @@ const CopyFramebuffer &getCopyFramebuffer(WrappedOpenGL *driver,
   {
     driver->glGenTextures(1, &copyFramebuffer.dsTextureId);
     driver->CreateTextureImage(copyFramebuffer.dsTextureId, depthFormat, eGL_NONE, eGL_NONE,
-                               textureTarget, 2, numEvents, 1, 1, numSamples, 1);
+                               textureTarget, 2, copyFramebuffer.width, 1, 1, numSamples, 1);
     driver->glFramebufferTexture(eGL_FRAMEBUFFER, eGL_DEPTH_STENCIL_ATTACHMENT,
                                  copyFramebuffer.dsTextureId, 0);
 
@@ -191,15 +193,15 @@ const CopyFramebuffer &getCopyFramebuffer(WrappedOpenGL *driver,
     {
       driver->glGenTextures(1, &copyFramebuffer.depthTextureId);
       driver->CreateTextureImage(copyFramebuffer.depthTextureId, depthFormat, eGL_NONE, eGL_NONE,
-                                 textureTarget, 2, numEvents, 1, 1, numSamples, 1);
+                                 textureTarget, 2, copyFramebuffer.width, 1, 1, numSamples, 1);
       driver->glFramebufferTexture(eGL_FRAMEBUFFER, eGL_DEPTH_ATTACHMENT,
                                    copyFramebuffer.depthTextureId, 0);
     }
     if(curStencil != 0)
     {
       driver->glGenTextures(1, &copyFramebuffer.stencilTextureId);
-      driver->CreateTextureImage(copyFramebuffer.stencilTextureId, stencilFormat, eGL_NONE,
-                                 eGL_NONE, textureTarget, 2, numEvents, 1, 1, numSamples, 1);
+      driver->CreateTextureImage(copyFramebuffer.stencilTextureId, stencilFormat, eGL_NONE, eGL_NONE,
+                                 textureTarget, 2, copyFramebuffer.width, 1, 1, numSamples, 1);
       driver->glFramebufferTexture(eGL_FRAMEBUFFER, eGL_STENCIL_ATTACHMENT,
                                    copyFramebuffer.stencilTextureId, 0);
     }
@@ -673,8 +675,8 @@ void QueryPostModPixelValues(WrappedOpenGL *driver, GLPixelHistoryResources &res
   driver->ReplayLog(0, modEvents[0].eventId, eReplay_WithoutDraw);
   CopyFramebuffer copyFramebuffer;
   RDCEraseEl(copyFramebuffer);
-  GLuint lastFramebufferId = ~0u;
-  int lastHistoryIdx = -1;
+  copyFramebuffer.framebufferId = ~0u;
+  int lastHistoryIdx = 0;
 
   for(size_t i = 0; i < modEvents.size(); i++)
   {
@@ -698,19 +700,20 @@ void QueryPostModPixelValues(WrappedOpenGL *driver, GLPixelHistoryResources &res
     }
     else
     {
-      copyFramebuffer = getCopyFramebuffer(driver, resources.copyFramebuffers, 1 /*single sampled*/,
+      CopyFramebuffer newCopyFramebuffer = getCopyFramebuffer(
+          driver, resources.copyFramebuffers, 1 /*single sampled*/,
                                            int(modEvents.size()));
-      if(copyFramebuffer.framebufferId != lastFramebufferId)
+      if(newCopyFramebuffer.framebufferId != copyFramebuffer.framebufferId)
       {
-        if(lastFramebufferId != ~0u)
+        if(copyFramebuffer.framebufferId != ~0u)
         {
-          RDCDEBUG("[OBJT] lastHistoryIdx=%d, i-lastHistoryIdx=%d", lastHistoryIdx, i-lastHistoryIdx);
-          readPixelValues(driver, resources, copyFramebuffer, history, lastHistoryIdx, true, (uint32_t)(i-lastHistoryIdx));
+          readPixelValues(driver, resources, copyFramebuffer, history, lastHistoryIdx, true,
+                          (uint32_t)(i - lastHistoryIdx));
         }
-        lastFramebufferId = copyFramebuffer.framebufferId;
         lastHistoryIdx = int(i);
       }
 
+      copyFramebuffer = newCopyFramebuffer;
       driver->glBindFramebuffer(eGL_DRAW_FRAMEBUFFER, copyFramebuffer.framebufferId);
       driver->glBindFramebuffer(eGL_READ_FRAMEBUFFER, savedDrawFramebuffer);
 
@@ -1122,8 +1125,8 @@ void QueryPostModPerFragment(WrappedOpenGL *driver, GLReplay *replay,
 
     CopyFramebuffer copyFramebuffer;
     RDCEraseEl(copyFramebuffer);
-    GLuint lastFramebufferId = ~0u;
-    int lastHistoryIdx = -1;
+    copyFramebuffer.framebufferId = ~0u;
+    int lastJ = 0;
 
     for(size_t j = 0; j < std::max(numFragments, 1u); ++j)
     {
@@ -1132,6 +1135,10 @@ void QueryPostModPerFragment(WrappedOpenGL *driver, GLReplay *replay,
       driver->glClear(eGL_STENCIL_BUFFER_BIT);
 
       driver->ReplayLog(modEvents[i].eventId, modEvents[i].eventId, eReplay_OnlyDraw);
+
+      float debugCVs[4];
+      driver->glReadPixels(x, y, 1, 1, eGL_RGBA, eGL_FLOAT, debugCVs);
+      RDCDEBUG("[OBJT] debugCVs %f %f %f %f", debugCVs[0], debugCVs[1], debugCVs[2], debugCVs[3]);
 
       if(numSamples > 1)
       {
@@ -1150,21 +1157,22 @@ void QueryPostModPerFragment(WrappedOpenGL *driver, GLReplay *replay,
       else
       {
         // Blit the values into out framebuffer
-        copyFramebuffer = getCopyFramebuffer(driver, resources.copyFramebuffers,
+        CopyFramebuffer newCopyFramebuffer = getCopyFramebuffer(driver, resources.copyFramebuffers,
                                              1 /*single sampled*/, int(modEvents.size()));
-        if(copyFramebuffer.framebufferId != lastFramebufferId)
+        if(newCopyFramebuffer.framebufferId != copyFramebuffer.framebufferId || (j - lastJ >= copyFramebuffer.width))
         {
-          if(lastFramebufferId != ~0u)
+          if(copyFramebuffer.framebufferId != ~0u)
           {
-            readPixelValues(driver, resources, copyFramebuffer, history, lastHistoryIdx, false, (uint32_t)(j-lastHistoryIdx));
+            readPixelValues(driver, resources, copyFramebuffer, history, lastJ + int(historyIndex - history.begin()), false,
+                            (uint32_t)(j - lastJ));
           }
-          lastFramebufferId = copyFramebuffer.framebufferId;
-          lastHistoryIdx = int(j);
+          lastJ = int(j);
         }
-
+        copyFramebuffer = newCopyFramebuffer;
         driver->glBindFramebuffer(eGL_DRAW_FRAMEBUFFER, copyFramebuffer.framebufferId);
         driver->glBindFramebuffer(eGL_READ_FRAMEBUFFER, savedDrawFramebuffer);
-        SafeBlitFramebuffer(x, y, x + 1, y + 1, GLint(j) - lastHistoryIdx, 0, GLint(j) + 1 - lastHistoryIdx, 1,
+        SafeBlitFramebuffer(x, y, x + 1, y + 1, GLint(j) - lastJ, 0, GLint(j) + 1 - lastJ,
+                            1,
                             getFramebufferCopyMask(driver), eGL_NEAREST);
       }
 
@@ -1173,10 +1181,10 @@ void QueryPostModPerFragment(WrappedOpenGL *driver, GLReplay *replay,
       driver->glBindFramebuffer(eGL_READ_FRAMEBUFFER, savedReadFramebuffer);
     }
 
-    if (numSamples == 1 && copyFramebuffer.framebufferId != 0u)
+    if (numSamples == 1 && copyFramebuffer.framebufferId != ~0u)
     {
-      readPixelValues(driver, resources, copyFramebuffer, history, lastHistoryIdx, true, numFragments - lastHistoryIdx);
-
+      readPixelValues(driver, resources, copyFramebuffer, history,
+                      lastJ + int(historyIndex - history.begin()), true, numFragments - lastJ);
     }
 
     driver->glBindFramebuffer(eGL_DRAW_FRAMEBUFFER, savedDrawFramebuffer);
