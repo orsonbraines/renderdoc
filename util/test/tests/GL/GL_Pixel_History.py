@@ -43,27 +43,24 @@ class GL_Pixel_History(rdtest.TestCase):
             x, y = 190, 149
             events = [glclear.eventId, action.eventId]
             modifs: List[rd.PixelModification] = self.controller.PixelHistory(tex, x, y, sub, rt.typeCast)
-            self.check_events(events, modifs, False)
+            self.check_events(events, modifs)
             self.check_pixel_value(tex, x, y, modifs[-1].postMod.col.floatValue, sub=sub, cast=rt.typeCast, eps=eps)
             self.check_shader_out_with_postmod(modifs[-1].shaderOut.col.floatValue, modifs[-1].postMod.col.floatValue, texDescription.format.compCount, eps)
 
             x, y = 328, 199
             events = [glclear.eventId]
             modifs: List[rd.pixelModification] = self.controller.PixelHistory(tex, x, y, sub, rt.typeCast)
-            self.check_events(events, modifs, False)
+            self.check_events(events, modifs)
             self.check_pixel_value(tex, x, y, modifs[-1].postMod.col.floatValue, sub=sub, cast=rt.typeCast, eps=eps)
 
             rdtest.log.success('Test {} completed.'.format(action.eventId))
 
 
-    def check_events(self, events, modifs, hasSecondary):
-        eventMatchingModifs = modifs[(-1 * len(events)):]
-        print(f"Events: {events}, Modifs: {modifs}, EventMatchingModifs: {eventMatchingModifs}")
-        #self.check(len(modifs) == len(events), "Expected {} events, got {}, modifs {}".format(len(events), len(modifs), modifs))
+    def check_events(self, events, modifs):
+        self.check(len(modifs) == len(events), "Expected {} events, got {}, modifs {}".format(len(events), len(modifs), modifs))
 
-        # modifications can show results from previous colour passes which we don't care about for now, so we only check the last two modifs
-        for i in range(len(eventMatchingModifs)):
-            self.check(eventMatchingModifs[i].eventId == events[i], f"Expected event with id {events[i]}, but got {eventMatchingModifs[i].eventId}")
+        for i in range(len(modifs)):
+            self.check(modifs[i].eventId == events[i], f"Expected event with id {events[i]}, but got {modifs[i].eventId}")
 
 
 

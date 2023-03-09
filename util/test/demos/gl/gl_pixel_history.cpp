@@ -149,33 +149,38 @@ void main()
             glGenTextures(1, &colorTexture);
             if(multisampled)
             {
-              glBindTexture(GL_TEXTURE_2D, colorTexture);
-              glTexStorage2D(GL_TEXTURE_2D, 1, colorFormats[i], screenWidth, screenHeight);
-			}
-            else
-            {
               glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, colorTexture);
               glTexStorage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 2, colorFormats[i], screenWidth,
                                         screenHeight, GL_TRUE);
 			}
-            GLuint depthTexture; // this will be deleted at the end of this for loop
-            glGenTextures(1, &depthTexture);
-            GLuint multisampledDepthTextures[depthFormatSize];
-            if(multisampled)
-            {
-              glBindTexture(GL_TEXTURE_2D, depthTexture);
-              glTexStorage2D(GL_TEXTURE_2D, 1, depthFormats[i], screenWidth, screenHeight);
-            }
             else
             {
-              glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, depthTexture);
-              glTexStorage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 2, depthFormats[h], screenWidth,
-                                        screenHeight, GL_TRUE);
+              glBindTexture(GL_TEXTURE_2D, colorTexture);
+              glTexStorage2D(GL_TEXTURE_2D, 1, colorFormats[i], screenWidth, screenHeight);
+			}
+
+            GLuint depthTexture; // this will be deleted at the end of this for loop
+            glGenTextures(1, &depthTexture);
+            if(depthFormats[h] != GL_NONE)
+            {
+              if(multisampled)
+              {
+                glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, depthTexture);
+                glTexStorage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 2, depthFormats[h],
+                                          screenWidth, screenHeight, GL_TRUE);
+              }
+              else
+              {
+                glBindTexture(GL_TEXTURE_2D, depthTexture);
+                glTexStorage2D(GL_TEXTURE_2D, 1, depthFormats[h], screenWidth, screenHeight);
+              }
             }
 
+            glBindTexture(multisampled ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D, colorTexture);
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
                                      multisampled ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D, colorTexture, 0);
 
+             glBindTexture(multisampled ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D, depthTexture);
             if(depthFormats[h] == GL_NONE)
             {
               glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0,
@@ -200,6 +205,7 @@ void main()
             GLenum check = glCheckFramebufferStatus(GL_FRAMEBUFFER);
             if(check != GL_FRAMEBUFFER_COMPLETE)
             {
+              TEST_ERROR("Framebuffer Completeness Status: %x\n", check);
               TEST_ERROR(
                   "Framebuffer is not complete with depth format %x colour format %x multisampled "
                   "%d\n ",
