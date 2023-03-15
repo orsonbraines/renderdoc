@@ -132,12 +132,14 @@ void main()
         glDepthFunc(GL_LESS);
         glEnable(GL_DEPTH_TEST);
         glDepthMask(GL_TRUE);
-        glClearBufferfi(GL_DEPTH, 0, 0.314f, 0);
+        glClearDepth(0.31415926);
+        glClear(GL_DEPTH_BUFFER_BIT);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+
         // Test 2: stencil test failure
         // Test 3: scissor test failure
         // Test 4: shader discard failure
 
-        glDrawArrays(GL_TRIANGLES, 0, 3);
 
       Present();
     }
