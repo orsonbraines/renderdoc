@@ -104,6 +104,7 @@ set(OPENGL_SRC
         gl/gl_parameter_zoo.cpp
         gl/gl_per_type_tex_units.cpp
         gl/gl_pixel_history.cpp
+	  gl/gl_pixel_history_failures.cpp
         gl/gl_queries_in_use.cpp
         gl/gl_renderbuffer_zoo.cpp
         gl/gl_resource_lifetimes.cpp

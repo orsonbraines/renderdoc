@@ -274,6 +274,7 @@
     <ClCompile Include="gl\gl_vao_0.cpp" />
     <ClCompile Include="gl\gl_vertex_attr_zoo.cpp" />
     <ClCompile Include="gl\gl_pixel_history.cpp" />
+    <ClCompile Include="gl\gl_pixel_history_failures.cpp" />
     <ClCompile Include="linux\linux_platform.cpp">
       <ExcludedFromBuild>true</ExcludedFromBuild>
     </ClCompile>
