@@ -102,19 +102,21 @@ void main()
     glEnableVertexAttribArray(1);
     glEnableVertexAttribArray(2);
 
+    GLuint fbo = MakeFBO();
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+
+    GLuint multisampledTexture;
+    multisampledTexture = MakeTexture();
+    glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, multisampledTexture);
+    glTexStorage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 2, GL_RGBA32F, screenWidth, screenHeight, GL_TRUE);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+        GL_TEXTURE_2D_MULTISAMPLE, multisampledTexture, 0);
+
     GLuint program = MakeProgram(common + vertex, common + pixel);
-
-    glDepthFunc(GL_ALWAYS);
-    glEnable(GL_DEPTH_TEST);
-    glDepthMask(GL_TRUE);
-
-    glStencilFunc(GL_ALWAYS, 0xcc, 0xff);
-    glStencilOp(GL_REPLACE, GL_REPLACE, GL_REPLACE);
-    glEnable(GL_STENCIL_TEST);
-    glStencilMask(0xff);
 
     while(Running())
     {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
         GLenum bufs[] = {GL_COLOR_ATTACHMENT0};
         glDrawBuffers(1, bufs);
 
@@ -137,10 +139,33 @@ void main()
         glDrawArrays(GL_TRIANGLES, 0, 3);
 
         // Test 2: stencil test failure
+        glDisable(GL_DEPTH_TEST);
+        glStencilFunc(GL_EQUAL, 0x1, 0xff);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+        glEnable(GL_STENCIL_TEST);
+        glStencilMask(0xff);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+
         // Test 3: scissor test failure
-        // Test 4: shader discard failure
+        glDisable(GL_STENCIL_TEST);
+        glEnable(GL_SCISSOR_TEST);
+        glScissor(1, 1, 1, 1);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
 
+        // Test 4: face culling failure
+        glDisable(GL_SCISSOR_TEST);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
 
+        // Test 5: sample mask failure
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        glDisable(GL_CULL_FACE);
+        glEnable(GL_SAMPLE_MASK);
+        glSampleMaski(0, 2);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+
+        glDisable(GL_SAMPLE_MASK);
       Present();
     }
 
