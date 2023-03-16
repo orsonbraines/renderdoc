@@ -102,11 +102,22 @@ void main()
     glEnableVertexAttribArray(1);
     glEnableVertexAttribArray(2);
 
-    GLuint fbo = MakeFBO();
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    GLuint ssFbo = MakeFBO();
+    GLuint msFbo = MakeFBO();
+    glBindFramebuffer(GL_FRAMEBUFFER, ssFbo);
+    GLuint ssColour = MakeTexture();
+    glBindTexture(GL_TEXTURE_2D, ssColour);
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, screenWidth, screenHeight);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssColour, 0);
+    GLuint ssDepthStencil = MakeTexture();
+    glBindTexture(GL_TEXTURE_2D, ssDepthStencil);
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_DEPTH24_STENCIL8, screenWidth, screenHeight);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D,
+                           ssDepthStencil, 0);
 
-    GLuint multisampledTexture;
-    multisampledTexture = MakeTexture();
+
+    glBindFramebuffer(GL_FRAMEBUFFER, msFbo);
+    GLuint multisampledTexture = MakeTexture();
     glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, multisampledTexture);
     glTexStorage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 2, GL_RGBA32F, screenWidth, screenHeight, GL_TRUE);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
@@ -114,9 +125,12 @@ void main()
 
     GLuint program = MakeProgram(common + vertex, common + pixel);
 
+    int err = glGetError();
+    printf("laksdjfsdjfljasd before loop btw %d\n", err);
+
     while(Running())
     {
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, ssFbo);
         GLenum bufs[] = {GL_COLOR_ATTACHMENT0};
         glDrawBuffers(1, bufs);
 
@@ -159,13 +173,15 @@ void main()
         glDrawArrays(GL_TRIANGLES, 0, 3);
 
         // Test 5: sample mask failure
-        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, msFbo);
         glDisable(GL_CULL_FACE);
         glEnable(GL_SAMPLE_MASK);
         glSampleMaski(0, 2);
         glDrawArrays(GL_TRIANGLES, 0, 3);
 
         glDisable(GL_SAMPLE_MASK);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
       Present();
     }
 
