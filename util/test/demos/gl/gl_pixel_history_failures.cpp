@@ -115,7 +115,6 @@ void main()
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D,
                            ssDepthStencil, 0);
 
-
     glBindFramebuffer(GL_FRAMEBUFFER, msFbo);
     GLuint multisampledTexture = MakeTexture();
     glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, multisampledTexture);
@@ -124,9 +123,6 @@ void main()
         GL_TEXTURE_2D_MULTISAMPLE, multisampledTexture, 0);
 
     GLuint program = MakeProgram(common + vertex, common + pixel);
-
-    int err = glGetError();
-    printf("laksdjfsdjfljasd before loop btw %d\n", err);
 
     while(Running())
     {
